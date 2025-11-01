@@ -1,0 +1,9 @@
+﻿<Solution>
+  <Folder Name="/Source Information/">
+    <File Path="PowerBASIC Compiler for Windows v10.0.pdf" />
+    <File Path="PowerBASIC Console Compiler v6.0.pdf" />
+    <File Path="URL.txt" />
+  </Folder>
+  <Project Path="PbToDotNetCore\PbToDotNetCore.csproj" Type="Classic C#" />
+  <Project Path="Runner\Runner.csproj" Type="Classic C#" />
+</Solution>

@@ -1,0 +1,3 @@
+[submodule "powerbasic-parser"]
+	path = powerbasic-parser
+	url = https://github.com/lxman/powerbasic-parser.git
