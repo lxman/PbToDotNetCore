@@ -2,6 +2,23 @@
 
 namespace PbToDotNetCore;
 
+// Helper class to store method information
+internal class MethodInfo
+{
+    public string Name { get; set; } = "";
+    public string ReturnType { get; set; } = "";
+    public List<(string Modifier, string Type, string Name)> Parameters { get; set; } = [];
+    public PowerBasicParser.BlockContext? Body { get; set; }
+}
+
+// Helper class to store interface information
+internal class InterfaceInfo
+{
+    public string Name { get; set; } = "";
+    public List<string> InheritedInterfaces { get; set; } = [];
+    public List<MethodInfo> Methods { get; set; } = [];
+}
+
 public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
 {
     private int _indentLevel = 0;
@@ -9,6 +26,26 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     private string? _currentFunctionName;
     private readonly HashSet<string> _arrayNames = [];
     private readonly Dictionary<string, string> _variableTypes = [];
+
+    // Track whether we're currently processing a method body
+    private bool _isInMethodBody = false;
+    private string? _currentMethodReturnType = null;
+
+    // COM base interfaces to filter out when converting to C#
+    private static readonly HashSet<string> ComBaseInterfaces = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "IUNKNOWN",
+        "IDISPATCH",
+        "ISTREAM",
+        "ISTORAGE",
+        "IMONIKER",
+        "IPERSIST",
+        "IPERSISTSTREAM",
+        "IPERSISTSTORAGE",
+        "IDATAOBJECT",
+        "IDROPTARGET",
+        "IDROPSOURCE"
+    };
     
     // Root-level visitors
     public override string VisitStartRule(PowerBasicParser.StartRuleContext context)
@@ -74,6 +111,20 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     {
         string? leftSide = Visit(context.implicitCallStmt_InStmt());
 
+        // In PowerBASIC methods, "METHOD = value" sets the return value
+        if (_isInMethodBody && leftSide?.ToUpper() == "METHOD")
+        {
+            string? rightSide = Visit(context.valueStmt());
+
+            // Add type suffix to numeric literals if needed
+            if (_currentMethodReturnType != null && _currentMethodReturnType != "void")
+            {
+                rightSide = AddNumericSuffix(rightSide, _currentMethodReturnType);
+            }
+
+            return $"{Indent}return {rightSide};\n";
+        }
+
         // In PowerBASIC, assigning to function name sets return value
         // Replace with _result variable name
         if (_currentFunctionName is not null && leftSide == _currentFunctionName)
@@ -81,15 +132,15 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
             leftSide = $"{_currentFunctionName}_result";
         }
 
-        string? rightSide = Visit(context.valueStmt());
+        string? rightSide2 = Visit(context.valueStmt());
 
         // Add type suffix to numeric literals if needed
-        if (_variableTypes.TryGetValue(leftSide, out string? varType))
+        if (leftSide != null && _variableTypes.TryGetValue(leftSide, out string? varType))
         {
-            rightSide = AddNumericSuffix(rightSide, varType);
+            rightSide2 = AddNumericSuffix(rightSide2, varType);
         }
 
-        return $"{Indent}{leftSide} = {rightSide};\n";
+        return $"{Indent}{leftSide} = {rightSide2};\n";
     }
     
     // Expression/value visitors
@@ -682,13 +733,177 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     public override string VisitClassStmt(PowerBasicParser.ClassStmtContext context)
     {
         string? className = context.ambiguousIdentifier()?.GetText();
-        var result = $"{Indent}public class {className}\n";
+        var result = "";
+
+        // Collect INSTANCE variables
+        var instanceVariables = new List<(string Type, string Name)>();
+        foreach (var element in context.classBodyElement())
+        {
+            if (element.INSTANCE() is not null && element.variableListStmt() is not null)
+            {
+                foreach (var variableSubStmt in element.variableListStmt().variableSubStmt())
+                {
+                    string? varName = variableSubStmt.ambiguousIdentifier()?.GetText();
+                    string varType = ConvertType(variableSubStmt.asTypeClause()?.GetText());
+                    if (varName != null)
+                    {
+                        instanceVariables.Add((varType, varName));
+                    }
+                }
+            }
+        }
+
+        // Collect all interfaces with their methods
+        var interfaces = new List<InterfaceInfo>();
+        foreach (var element in context.classBodyElement())
+        {
+            if (element.interfaceStmt() is not null)
+            {
+                var interfaceCtx = element.interfaceStmt();
+                var interfaceInfo = new InterfaceInfo
+                {
+                    Name = interfaceCtx.ambiguousIdentifier()?.GetText() ?? ""
+                };
+
+                // Collect inherited interfaces (filter out COM base interfaces)
+                foreach (var bodyElement in interfaceCtx.interfaceBodyElement())
+                {
+                    if (bodyElement.GetText().StartsWith("INHERIT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string? inheritedName = bodyElement.ambiguousIdentifier()?.GetText();
+                        if (inheritedName != null && !ComBaseInterfaces.Contains(inheritedName))
+                        {
+                            interfaceInfo.InheritedInterfaces.Add(inheritedName);
+                        }
+                    }
+                }
+
+                // Collect methods with their bodies
+                foreach (var bodyElement in interfaceCtx.interfaceBodyElement())
+                {
+                    if (bodyElement.methodStmt() is not null)
+                    {
+                        var methodCtx = bodyElement.methodStmt();
+
+                        // Determine return type - if no AS clause, it's a SUB (void)
+                        string returnType;
+                        if (methodCtx.asTypeClause() == null)
+                        {
+                            returnType = "void";
+                        }
+                        else
+                        {
+                            returnType = ConvertType(methodCtx.asTypeClause()?.GetText());
+                        }
+
+                        var methodInfo = new MethodInfo
+                        {
+                            Name = methodCtx.ambiguousIdentifier()?.GetText() ?? "",
+                            ReturnType = returnType,
+                            Body = methodCtx.block()
+                        };
+
+                        // Collect parameters
+                        if (methodCtx.argList() is not null)
+                        {
+                            foreach (var arg in methodCtx.argList().arg())
+                            {
+                                string? paramName = arg.ambiguousIdentifier()?.GetText();
+                                string paramType = ConvertType(arg.asTypeClause()?.GetText());
+                                string modifier = arg.BYREF() is not null ? "ref " : "";
+
+                                if (paramName != null)
+                                {
+                                    methodInfo.Parameters.Add((modifier, paramType, paramName));
+                                    _variableTypes[paramName] = paramType;
+                                }
+                            }
+                        }
+
+                        interfaceInfo.Methods.Add(methodInfo);
+                    }
+                }
+
+                interfaces.Add(interfaceInfo);
+            }
+        }
+
+        // Generate standalone C# interfaces (signatures only)
+        foreach (var interfaceInfo in interfaces)
+        {
+            result += $"{Indent}public interface {interfaceInfo.Name}";
+            if (interfaceInfo.InheritedInterfaces.Count > 0)
+            {
+                result += $" : {string.Join(", ", interfaceInfo.InheritedInterfaces)}";
+            }
+            result += "\n";
+            result += $"{Indent}{{\n";
+
+            _indentLevel++;
+
+            foreach (var method in interfaceInfo.Methods)
+            {
+                var parameters = string.Join(", ", method.Parameters.Select(p => $"{p.Modifier}{p.Type} {p.Name}"));
+                result += $"{Indent}{method.ReturnType} {method.Name}({parameters});\n";
+            }
+
+            _indentLevel--;
+            result += $"{Indent}}}\n";
+            result += "\n";
+        }
+
+        // Generate C# class that implements the interfaces
+        result += $"{Indent}public class {className}";
+        if (interfaces.Count > 0)
+        {
+            result += $" : {string.Join(", ", interfaces.Select(i => i.Name))}";
+        }
+        result += "\n";
         result += $"{Indent}{{\n";
 
         _indentLevel++;
 
-        // Visit all class body elements (interfaces, event sources)
-        result = context.classBodyElement().Aggregate(result, (current, element) => current + Visit(element));
+        // Add instance variables as private fields
+        foreach (var (type, name) in instanceVariables)
+        {
+            result += $"{Indent}private {type} {name};\n";
+        }
+
+        if (instanceVariables.Count > 0)
+        {
+            result += "\n";
+        }
+
+        // Generate method implementations
+        foreach (var interfaceInfo in interfaces)
+        {
+            foreach (var method in interfaceInfo.Methods)
+            {
+                var parameters = string.Join(", ", method.Parameters.Select(p => $"{p.Modifier}{p.Type} {p.Name}"));
+                result += $"{Indent}public {method.ReturnType} {method.Name}({parameters})\n";
+                result += $"{Indent}{{\n";
+
+                _indentLevel++;
+
+                // Set method context for METHOD = value conversion
+                _isInMethodBody = true;
+                _currentMethodReturnType = method.ReturnType;
+
+                // Visit method body if present
+                if (method.Body is not null)
+                {
+                    result += Visit(method.Body);
+                }
+
+                // Restore context
+                _isInMethodBody = false;
+                _currentMethodReturnType = null;
+
+                _indentLevel--;
+                result += $"{Indent}}}\n";
+                result += "\n";
+            }
+        }
 
         _indentLevel--;
         result += $"{Indent}}}\n";

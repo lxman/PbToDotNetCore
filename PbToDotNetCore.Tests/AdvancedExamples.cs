@@ -12,12 +12,19 @@ public class AdvancedExamples
 
                                 public class PowerBasicModule
                                 {
-                                    public class MyClass
+                                    public interface MyInterface
                                     {
-                                        public interface MyInterface : IUNKNOWN
+                                        int SayHello();
+                                    }
+
+                                    public class MyClass : MyInterface
+                                    {
+                                        public int SayHello()
                                         {
-                                            int SayHello();
+                                            MessageBox.Show("Hello from MyClass!");
+                                            return 0;
                                         }
+
                                     }
                                     public int PBMAIN()
                                     {
