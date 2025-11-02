@@ -4,6 +4,7 @@
     <File Path="PowerBASIC Console Compiler v6.0.pdf" />
     <File Path="URL.txt" />
   </Folder>
+  <Project Path="PbToDotNetCore.Tests\PbToDotNetCore.Tests.csproj" Type="Classic C#" />
   <Project Path="PbToDotNetCore\PbToDotNetCore.csproj" Type="Classic C#" />
   <Project Path="Runner\Runner.csproj" Type="Classic C#" />
 </Solution>

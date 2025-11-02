@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-// Generated from powerbasic-parser/src/main/antlr4/io/proleap/vb6/PowerBasic.g4 by ANTLR 4.13.2
+// Generated from src/main/antlr4/io/proleap/vb6/PowerBasic.g4 by ANTLR 4.13.2
 
 // Unreachable code detected
 #pragma warning disable 0162
@@ -725,6 +725,26 @@ public partial class PowerBasicBaseVisitor<Result> : AbstractParseTreeVisitor<Re
 	/// <param name="context">The parse tree.</param>
 	/// <return>The visitor result.</return>
 	public virtual Result VisitIfElseBlockStmt([NotNull] PowerBasicParser.IfElseBlockStmtContext context) { return VisitChildren(context); }
+	/// <summary>
+	/// Visit a parse tree produced by <see cref="PowerBasicParser.incrStmt"/>.
+	/// <para>
+	/// The default implementation returns the result of calling <see cref="AbstractParseTreeVisitor{Result}.VisitChildren(IRuleNode)"/>
+	/// on <paramref name="context"/>.
+	/// </para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	/// <return>The visitor result.</return>
+	public virtual Result VisitIncrStmt([NotNull] PowerBasicParser.IncrStmtContext context) { return VisitChildren(context); }
+	/// <summary>
+	/// Visit a parse tree produced by <see cref="PowerBasicParser.decrStmt"/>.
+	/// <para>
+	/// The default implementation returns the result of calling <see cref="AbstractParseTreeVisitor{Result}.VisitChildren(IRuleNode)"/>
+	/// on <paramref name="context"/>.
+	/// </para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	/// <return>The visitor result.</return>
+	public virtual Result VisitDecrStmt([NotNull] PowerBasicParser.DecrStmtContext context) { return VisitChildren(context); }
 	/// <summary>
 	/// Visit a parse tree produced by <see cref="PowerBasicParser.implementsStmt"/>.
 	/// <para>
@@ -1633,6 +1653,17 @@ public partial class PowerBasicBaseVisitor<Result> : AbstractParseTreeVisitor<Re
 	/// <return>The visitor result.</return>
 	public virtual Result VisitVsIs([NotNull] PowerBasicParser.VsIsContext context) { return VisitChildren(context); }
 	/// <summary>
+	/// Visit a parse tree produced by the <c>vsClassInstantiation</c>
+	/// labeled alternative in <see cref="PowerBasicParser.valueStmt"/>.
+	/// <para>
+	/// The default implementation returns the result of calling <see cref="AbstractParseTreeVisitor{Result}.VisitChildren(IRuleNode)"/>
+	/// on <paramref name="context"/>.
+	/// </para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	/// <return>The visitor result.</return>
+	public virtual Result VisitVsClassInstantiation([NotNull] PowerBasicParser.VsClassInstantiationContext context) { return VisitChildren(context); }
+	/// <summary>
 	/// Visit a parse tree produced by the <c>vsMod</c>
 	/// labeled alternative in <see cref="PowerBasicParser.valueStmt"/>.
 	/// <para>
@@ -1843,7 +1874,8 @@ public partial class PowerBasicBaseVisitor<Result> : AbstractParseTreeVisitor<Re
 	/// <return>The visitor result.</return>
 	public virtual Result VisitECS_MemberProcedureCall([NotNull] PowerBasicParser.ECS_MemberProcedureCallContext context) { return VisitChildren(context); }
 	/// <summary>
-	/// Visit a parse tree produced by <see cref="PowerBasicParser.implicitCallStmt_InBlock"/>.
+	/// Visit a parse tree produced by the <c>iCS_B_MemberCall</c>
+	/// labeled alternative in <see cref="PowerBasicParser.implicitCallStmt_InBlock"/>.
 	/// <para>
 	/// The default implementation returns the result of calling <see cref="AbstractParseTreeVisitor{Result}.VisitChildren(IRuleNode)"/>
 	/// on <paramref name="context"/>.
@@ -1851,9 +1883,10 @@ public partial class PowerBasicBaseVisitor<Result> : AbstractParseTreeVisitor<Re
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
 	/// <return>The visitor result.</return>
-	public virtual Result VisitImplicitCallStmt_InBlock([NotNull] PowerBasicParser.ImplicitCallStmt_InBlockContext context) { return VisitChildren(context); }
+	public virtual Result VisitICS_B_MemberCall([NotNull] PowerBasicParser.ICS_B_MemberCallContext context) { return VisitChildren(context); }
 	/// <summary>
-	/// Visit a parse tree produced by <see cref="PowerBasicParser.iCS_B_ProcedureCall"/>.
+	/// Visit a parse tree produced by the <c>iCS_B_ProcedureCall</c>
+	/// labeled alternative in <see cref="PowerBasicParser.implicitCallStmt_InBlock"/>.
 	/// <para>
 	/// The default implementation returns the result of calling <see cref="AbstractParseTreeVisitor{Result}.VisitChildren(IRuleNode)"/>
 	/// on <paramref name="context"/>.
@@ -1862,16 +1895,6 @@ public partial class PowerBasicBaseVisitor<Result> : AbstractParseTreeVisitor<Re
 	/// <param name="context">The parse tree.</param>
 	/// <return>The visitor result.</return>
 	public virtual Result VisitICS_B_ProcedureCall([NotNull] PowerBasicParser.ICS_B_ProcedureCallContext context) { return VisitChildren(context); }
-	/// <summary>
-	/// Visit a parse tree produced by <see cref="PowerBasicParser.iCS_B_MemberProcedureCall"/>.
-	/// <para>
-	/// The default implementation returns the result of calling <see cref="AbstractParseTreeVisitor{Result}.VisitChildren(IRuleNode)"/>
-	/// on <paramref name="context"/>.
-	/// </para>
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	/// <return>The visitor result.</return>
-	public virtual Result VisitICS_B_MemberProcedureCall([NotNull] PowerBasicParser.ICS_B_MemberProcedureCallContext context) { return VisitChildren(context); }
 	/// <summary>
 	/// Visit a parse tree produced by <see cref="PowerBasicParser.implicitCallStmt_InStmt"/>.
 	/// <para>

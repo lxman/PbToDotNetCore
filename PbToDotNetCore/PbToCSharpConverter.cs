@@ -5,8 +5,8 @@ namespace PbToDotNetCore;
 public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
 {
     private int _indentLevel = 0;
-    private string Indent => new string(' ', _indentLevel * 4);
-    private string? _currentFunctionName = null;
+    private string Indent => new(' ', _indentLevel * 4);
+    private string? _currentFunctionName;
     private readonly HashSet<string> _arrayNames = [];
     private readonly Dictionary<string, string> _variableTypes = [];
     
@@ -116,6 +116,21 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
             "SQ" => "\"'\"",
             _ => $"/* ${constantName} */"  // Unknown constant, leave as comment
         };
+    }
+
+    public override string VisitVsClassInstantiation(PowerBasicParser.VsClassInstantiationContext context)
+    {
+        // PowerBASIC: CLASS "ClassName" → C#: new ClassName()
+        // The className will be a string literal
+        string? className = Visit(context.valueStmt());
+
+        // Remove quotes from the string literal
+        if (className != null && className.StartsWith("\"") && className.EndsWith("\""))
+        {
+            className = className.Substring(1, className.Length - 2);
+        }
+
+        return $"new {className}()";
     }
 
     public override string VisitVsICS(PowerBasicParser.VsICSContext context)
@@ -650,6 +665,19 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         return result;
     }
 
+    // INCR and DECR statement visitors
+    public override string VisitIncrStmt(PowerBasicParser.IncrStmtContext context)
+    {
+        string? varName = context.ambiguousIdentifier()?.GetText();
+        return $"{Indent}{varName}++;\n";
+    }
+
+    public override string VisitDecrStmt(PowerBasicParser.DecrStmtContext context)
+    {
+        string? varName = context.ambiguousIdentifier()?.GetText();
+        return $"{Indent}{varName}--;\n";
+    }
+
     // CLASS/INTERFACE/METHOD visitors
     public override string VisitClassStmt(PowerBasicParser.ClassStmtContext context)
     {
@@ -670,7 +698,22 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
 
     public override string VisitClassBodyElement(PowerBasicParser.ClassBodyElementContext context)
     {
-        // Delegates to specific element types
+        // Check if this is an INSTANCE variable declaration
+        if (context.INSTANCE() is not null && context.variableListStmt() is not null)
+        {
+            // Handle instance variables as class fields
+            var result = "";
+            foreach (var variableSubStmt in context.variableListStmt().variableSubStmt())
+            {
+                string? varName = variableSubStmt.ambiguousIdentifier()?.GetText();
+                string varType = ConvertType(variableSubStmt.asTypeClause()?.GetText());
+
+                result += $"{Indent}private {varType} {varName};\n";
+            }
+            return result;
+        }
+
+        // Delegates to specific element types (interfaces, events, etc.)
         return VisitChildren(context);
     }
 
@@ -718,9 +761,38 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         string? methodName = context.ambiguousIdentifier()?.GetText();
         string returnType = ConvertType(context.asTypeClause()?.GetText());
 
+        // Process method parameters
+        var parameters = "";
+        if (context.argList() is not null)
+        {
+            var paramList = new List<string>();
+            foreach (PowerBasicParser.ArgContext? arg in context.argList().arg())
+            {
+                string? paramName = arg.ambiguousIdentifier()?.GetText();
+                string paramType = ConvertType(arg.asTypeClause()?.GetText());
+
+                // Track parameter type
+                if (paramName is not null)
+                {
+                    _variableTypes[paramName] = paramType;
+                }
+
+                // BYVAL vs BYREF - C# uses ref keyword for BYREF
+                var modifier = "";
+                if (arg.BYREF() is not null)
+                {
+                    modifier = "ref ";
+                }
+
+                paramList.Add($"{modifier}{paramType} {paramName}");
+            }
+            parameters = string.Join(", ", paramList);
+        }
+
         // For interface methods, we just declare the signature
         // PowerBASIC allows methods with bodies in interfaces, but C# doesn't (until C# 8+)
-        var result = $"{Indent}{returnType} {methodName}();\n";
+        // We skip the body and only output the signature
+        var result = $"{Indent}{returnType} {methodName}({parameters});\n";
 
         return result;
     }
@@ -748,18 +820,26 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     }
 
     // Procedure call visitors
-    public override string VisitImplicitCallStmt_InBlock(PowerBasicParser.ImplicitCallStmt_InBlockContext context)
+    // Member call: obj.Method() or obj.Method(args)
+    public override string VisitICS_B_MemberCall(PowerBasicParser.ICS_B_MemberCallContext context)
     {
-        // Handle implicit procedure calls (like MSGBOX "text")
-        return VisitChildren(context);
+        string? baseName = context.certainIdentifier()?.GetText();
+        string? memberName = context.ambiguousIdentifier()?.GetText();
+
+        var args = "";
+        if (context.argsCall() is not null)
+        {
+            args = Visit(context.argsCall());
+        }
+
+        return $"{Indent}{baseName}.{memberName}({args});\n";
     }
 
+    // Procedure call with arguments: MSGBOX "text" or MyProc arg1, arg2
     public override string VisitICS_B_ProcedureCall(PowerBasicParser.ICS_B_ProcedureCallContext context)
     {
-        // Get the procedure name
         string? procName = context.certainIdentifier()?.GetText();
 
-        // Get the arguments
         var args = "";
         if (context.argsCall() is not null)
         {
@@ -820,7 +900,10 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
 
     private static string ConvertType(string? pbType)
     {
-        return pbType?.ToUpper() switch
+        if (string.IsNullOrWhiteSpace(pbType))
+            return "object";
+
+        string? result = pbType.ToUpper() switch
         {
             // Standard BASIC types
             "AS INTEGER" => "short",
@@ -840,8 +923,17 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
             "AS ASCIIZ" => "string",    // null-terminated string
             "AS BIT" => "bool",         // single bit
 
-            _ => "object"
+            _ => null  // Not a built-in type
         };
+
+        // If it's a built-in type, return the mapped value
+        if (result != null)
+            return result;
+
+        // For complex/user-defined types, strip "AS " and return the type name
+        return pbType.StartsWith("AS ", StringComparison.OrdinalIgnoreCase)
+            ? pbType[3..].Trim()
+            : "object";
     }
 
     private static string AddNumericSuffix(string value, string targetType)

@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-// Generated from powerbasic-parser/src/main/antlr4/io/proleap/vb6/PowerBasic.g4 by ANTLR 4.13.2
+// Generated from src/main/antlr4/io/proleap/vb6/PowerBasic.g4 by ANTLR 4.13.2
 
 // Unreachable code detected
 #pragma warning disable 0162
@@ -450,6 +450,18 @@ public interface IPowerBasicVisitor<Result> : IParseTreeVisitor<Result> {
 	/// <param name="context">The parse tree.</param>
 	/// <return>The visitor result.</return>
 	Result VisitIfElseBlockStmt([NotNull] PowerBasicParser.IfElseBlockStmtContext context);
+	/// <summary>
+	/// Visit a parse tree produced by <see cref="PowerBasicParser.incrStmt"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	/// <return>The visitor result.</return>
+	Result VisitIncrStmt([NotNull] PowerBasicParser.IncrStmtContext context);
+	/// <summary>
+	/// Visit a parse tree produced by <see cref="PowerBasicParser.decrStmt"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	/// <return>The visitor result.</return>
+	Result VisitDecrStmt([NotNull] PowerBasicParser.DecrStmtContext context);
 	/// <summary>
 	/// Visit a parse tree produced by <see cref="PowerBasicParser.implementsStmt"/>.
 	/// </summary>
@@ -1006,6 +1018,13 @@ public interface IPowerBasicVisitor<Result> : IParseTreeVisitor<Result> {
 	/// <return>The visitor result.</return>
 	Result VisitVsIs([NotNull] PowerBasicParser.VsIsContext context);
 	/// <summary>
+	/// Visit a parse tree produced by the <c>vsClassInstantiation</c>
+	/// labeled alternative in <see cref="PowerBasicParser.valueStmt"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	/// <return>The visitor result.</return>
+	Result VisitVsClassInstantiation([NotNull] PowerBasicParser.VsClassInstantiationContext context);
+	/// <summary>
 	/// Visit a parse tree produced by the <c>vsMod</c>
 	/// labeled alternative in <see cref="PowerBasicParser.valueStmt"/>.
 	/// </summary>
@@ -1136,23 +1155,19 @@ public interface IPowerBasicVisitor<Result> : IParseTreeVisitor<Result> {
 	/// <return>The visitor result.</return>
 	Result VisitECS_MemberProcedureCall([NotNull] PowerBasicParser.ECS_MemberProcedureCallContext context);
 	/// <summary>
-	/// Visit a parse tree produced by <see cref="PowerBasicParser.implicitCallStmt_InBlock"/>.
+	/// Visit a parse tree produced by the <c>iCS_B_MemberCall</c>
+	/// labeled alternative in <see cref="PowerBasicParser.implicitCallStmt_InBlock"/>.
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
 	/// <return>The visitor result.</return>
-	Result VisitImplicitCallStmt_InBlock([NotNull] PowerBasicParser.ImplicitCallStmt_InBlockContext context);
+	Result VisitICS_B_MemberCall([NotNull] PowerBasicParser.ICS_B_MemberCallContext context);
 	/// <summary>
-	/// Visit a parse tree produced by <see cref="PowerBasicParser.iCS_B_ProcedureCall"/>.
+	/// Visit a parse tree produced by the <c>iCS_B_ProcedureCall</c>
+	/// labeled alternative in <see cref="PowerBasicParser.implicitCallStmt_InBlock"/>.
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
 	/// <return>The visitor result.</return>
 	Result VisitICS_B_ProcedureCall([NotNull] PowerBasicParser.ICS_B_ProcedureCallContext context);
-	/// <summary>
-	/// Visit a parse tree produced by <see cref="PowerBasicParser.iCS_B_MemberProcedureCall"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	/// <return>The visitor result.</return>
-	Result VisitICS_B_MemberProcedureCall([NotNull] PowerBasicParser.ICS_B_MemberProcedureCallContext context);
 	/// <summary>
 	/// Visit a parse tree produced by <see cref="PowerBasicParser.implicitCallStmt_InStmt"/>.
 	/// </summary>
