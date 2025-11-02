@@ -1,6 +1,5 @@
 ﻿using PbToDotNetCore;
-using Runner.Examples;
 
-string csCode = PbToCsConverter.GenerateCsCode(AdvancedExamples.SimpleClass);
+string csCode = PbToCsConverter.GenerateCsCode(Runner.Examples.AdvancedExamples.BitOperations);
 
 Console.WriteLine(csCode);

@@ -5,8 +5,8 @@ namespace PbToDotNetCore;
 // Helper class to store method information
 internal class MethodInfo
 {
-    public string Name { get; set; } = "";
-    public string ReturnType { get; set; } = "";
+    public string Name { get; set; } = string.Empty;
+    public string ReturnType { get; set; } = string.Empty;
     public List<(string Modifier, string Type, string Name)> Parameters { get; set; } = [];
     public PowerBasicParser.BlockContext? Body { get; set; }
 }
@@ -14,7 +14,7 @@ internal class MethodInfo
 // Helper class to store interface information
 internal class InterfaceInfo
 {
-    public string Name { get; set; } = "";
+    public string Name { get; set; } = string.Empty;
     public List<string> InheritedInterfaces { get; set; } = [];
     public List<MethodInfo> Methods { get; set; } = [];
 }
@@ -26,6 +26,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     private string? _currentFunctionName;
     private readonly HashSet<string> _arrayNames = [];
     private readonly Dictionary<string, string> _variableTypes = [];
+    private readonly HashSet<string> _loopVariables = [];
 
     // Track whether we're currently processing a method body
     private bool _isInMethodBody = false;
@@ -56,7 +57,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
 
     public override string VisitModule(PowerBasicParser.ModuleContext context)
     {
-        var result = "";
+        var result = string.Empty;
 
         // Add using statements for C#
         result += "using System;\n";
@@ -84,7 +85,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     public override string VisitModuleBody(PowerBasicParser.ModuleBodyContext context)
     {
         // Visit all module elements (functions, subs, types, etc.)
-        return context.moduleBodyElement().Aggregate("", (current, element) => current + Visit(element));
+        return context.moduleBodyElement().Aggregate(string.Empty, (current, element) => current + Visit(element));
     }
 
     public override string VisitModuleBodyElement(PowerBasicParser.ModuleBodyElementContext context)
@@ -96,8 +97,156 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     // Block visitors (for function bodies)
     public override string VisitBlock(PowerBasicParser.BlockContext context)
     {
-        // Visit all statements in the block
-        return context.blockStmt().Aggregate("", (current, stmt) => current + Visit(stmt));
+        // Visit all statements in the block, grouping assembly and detecting THREAD CREATE...CLOSE blocks
+        var result = string.Empty;
+        var statements = context.blockStmt();
+        var assemblyBlock = new List<string>();
+
+        for (int i = 0; i < statements.Length; i++)
+        {
+            var stmt = statements[i];
+
+            // Check if this is an assembly statement
+            if (stmt.asmStmt() != null)
+            {
+                // Collect assembly instruction
+                string asmInstruction = stmt.asmStmt().GetText().Substring(1).Trim();
+                assemblyBlock.Add(asmInstruction);
+            }
+            // Check if this is a THREAD CREATE statement - start of thread block
+            else if (stmt.threadStmt() != null && IsThreadCreate(stmt.threadStmt()))
+            {
+                // Flush any accumulated assembly statements first
+                if (assemblyBlock.Count > 0)
+                {
+                    result += GenerateAssemblyBlock(assemblyBlock);
+                    assemblyBlock.Clear();
+                }
+
+                // Find the matching THREAD CLOSE and collect everything in between
+                var threadBlockStatements = new List<string>();
+                int endIndex = i;
+
+                // Add the CREATE statement
+                threadBlockStatements.Add(GetStatementText(stmt));
+
+                // Collect all statements until we find THREAD CLOSE
+                for (int j = i + 1; j < statements.Length; j++)
+                {
+                    var nextStmt = statements[j];
+                    threadBlockStatements.Add(GetStatementText(nextStmt));
+
+                    if (nextStmt.threadStmt() != null && IsThreadClose(nextStmt.threadStmt()))
+                    {
+                        endIndex = j;
+                        break;
+                    }
+                }
+
+                // Generate the thread block comment
+                result += GenerateThreadBlock(threadBlockStatements);
+
+                // Skip ahead past all the statements we've processed
+                i = endIndex;
+            }
+            else
+            {
+                // Flush any accumulated assembly statements
+                if (assemblyBlock.Count > 0)
+                {
+                    result += GenerateAssemblyBlock(assemblyBlock);
+                    assemblyBlock.Clear();
+                }
+
+                // Visit the statement normally
+                result += Visit(stmt);
+            }
+        }
+
+        // Handle any remaining assembly statements at the end
+        if (assemblyBlock.Count > 0)
+        {
+            result += GenerateAssemblyBlock(assemblyBlock);
+        }
+
+        return result;
+    }
+
+    private bool IsThreadCreate(PowerBasicParser.ThreadStmtContext context)
+    {
+        string text = context.GetText().ToUpper();
+        return text.Contains("THREADCREATE") || text.StartsWith("THREAD") && text.Contains("CREATE");
+    }
+
+    private bool IsThreadClose(PowerBasicParser.ThreadStmtContext context)
+    {
+        string text = context.GetText().ToUpper();
+        return text.Contains("THREADCLOSE") || text.StartsWith("THREAD") && text.Contains("CLOSE");
+    }
+
+    private string GetStatementText(PowerBasicParser.BlockStmtContext stmt)
+    {
+        // Get a readable representation of the statement
+        string text = stmt.GetText();
+
+        // For readability, try to format common statements better
+        if (stmt.threadStmt() != null)
+        {
+            return text; // Thread statements already readable
+        }
+        else if (stmt.explicitCallStmt() != null || stmt.implicitCallStmt_InBlock() != null)
+        {
+            // Function calls like MSGBOX
+            return text;
+        }
+        else
+        {
+            return text;
+        }
+    }
+
+    private string GenerateAssemblyBlock(List<string> assemblyInstructions)
+    {
+        var result = $"{Indent}// ============================================================\n";
+        result += $"{Indent}// INLINE ASSEMBLY DETECTED - MANUAL CONVERSION REQUIRED\n";
+        result += $"{Indent}// PowerBASIC inline assembly cannot be automatically converted.\n";
+        result += $"{Indent}// Original assembly code:\n";
+
+        foreach (var instruction in assemblyInstructions)
+        {
+            result += $"{Indent}//   ! {instruction}\n";
+        }
+
+        result += $"{Indent}// Consider: C# arithmetic operations, System.Runtime.Intrinsics, or P/Invoke\n";
+        result += $"{Indent}// ============================================================\n";
+        result += $"{Indent}throw new NotImplementedException(\"Inline assembly block with {assemblyInstructions.Count} instruction(s)\");\n";
+
+        return result;
+    }
+
+    private string GenerateThreadBlock(List<string> threadBlockStatements)
+    {
+        var result = $"{Indent}// ============================================================\n";
+        result += $"{Indent}// THREAD BLOCK DETECTED - MANUAL CONVERSION REQUIRED\n";
+        result += $"{Indent}// PowerBASIC THREAD CREATE...CLOSE block with {threadBlockStatements.Count} statement(s)\n";
+        result += $"{Indent}// \n";
+        result += $"{Indent}// Original PowerBASIC code:\n";
+
+        foreach (var stmt in threadBlockStatements)
+        {
+            result += $"{Indent}//   {stmt}\n";
+        }
+
+        result += $"{Indent}// \n";
+        result += $"{Indent}// Conversion Guide:\n";
+        result += $"{Indent}// - Replace THREAD CREATE func TO handle with: thread = new Thread(() => func()); thread.Start();\n";
+        result += $"{Indent}// - Replace THREAD WAIT handle with: thread.Join();\n";
+        result += $"{Indent}// - Remove THREAD CLOSE handle (automatic cleanup in C#)\n";
+        result += $"{Indent}// - Convert other statements within the block as needed\n";
+        result += $"{Indent}// ============================================================\n";
+        result += $"{Indent}throw new NotImplementedException(\"Thread block requires manual conversion\");\n";
+
+        return result;
     }
 
     public override string VisitBlockStmt(PowerBasicParser.BlockStmtContext context)
@@ -148,7 +297,15 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     public override string VisitVsLiteral(PowerBasicParser.VsLiteralContext context)
     {
         // Literal values (numbers, strings, etc.)
-        return context.GetText();
+        string literalText = context.GetText();
+
+        // Convert PowerBASIC binary literals (%xxxxxxxx) to C# binary literals (0bxxxxxxxx)
+        if (literalText.StartsWith("%"))
+        {
+            return "0b" + literalText.Substring(1);
+        }
+
+        return literalText;
     }
 
     public override string VisitVsBuiltInConstant(PowerBasicParser.VsBuiltInConstantContext context)
@@ -303,6 +460,54 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         return VisitChildren(context);
     }
 
+    public override string VisitICS_S_MembersCall(PowerBasicParser.ICS_S_MembersCallContext context)
+    {
+        // Handle member access like obj.member or obj.method()
+        // Format: (variable)? memberCall+
+        var result = string.Empty;
+
+        // Get the base object/variable if present
+        if (context.iCS_S_VariableOrProcedureCall() != null)
+        {
+            result = Visit(context.iCS_S_VariableOrProcedureCall());
+        }
+        else if (context.iCS_S_ProcedureOrArrayCall() != null)
+        {
+            result = Visit(context.iCS_S_ProcedureOrArrayCall());
+        }
+
+        // Add each member call
+        foreach (var memberCall in context.iCS_S_MemberCall())
+        {
+            result += Visit(memberCall);
+        }
+
+        // Handle dictionary call if present
+        if (context.dictionaryCallStmt() != null)
+        {
+            result += Visit(context.dictionaryCallStmt());
+        }
+
+        return result;
+    }
+
+    public override string VisitICS_S_MemberCall(PowerBasicParser.ICS_S_MemberCallContext context)
+    {
+        // Handle a single member access: .member
+        var result = ".";
+
+        if (context.iCS_S_VariableOrProcedureCall() != null)
+        {
+            result += Visit(context.iCS_S_VariableOrProcedureCall());
+        }
+        else if (context.iCS_S_ProcedureOrArrayCall() != null)
+        {
+            result += Visit(context.iCS_S_ProcedureOrArrayCall());
+        }
+
+        return result;
+    }
+
     public override string VisitICS_S_ProcedureOrArrayCall(PowerBasicParser.ICS_S_ProcedureOrArrayCallContext context)
     {
         // Handle function calls and array indexing in statements/expressions
@@ -310,7 +515,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         string? typeHint = context.typeHint()?.GetText();  // $ for string functions
 
         // Get arguments - argsCall() returns an array, we want the first one if it exists
-        var args = "";
+        var args = string.Empty;
         PowerBasicParser.ArgsCallContext[]? argsCallArray = context.argsCall();
         if (argsCallArray is not null && argsCallArray.Length > 0)
         {
@@ -346,6 +551,20 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
             }
         }
 
+        // Handle BIN$() - binary string conversion function
+        if (funcName?.ToUpper() == "BIN" && typeHint == "$")
+        {
+            // BIN$(value) → Convert.ToString(value, 2)
+            return $"Convert.ToString({args}, 2)";
+        }
+
+        // Handle VARPTR() - pointer function
+        if (funcName?.ToUpper() == "VARPTR")
+        {
+            // VARPTR() cannot be directly converted - return placeholder
+            return $"IntPtr.Zero /* TODO: VARPTR({args}) - Consider Marshal.AllocHGlobal or GCHandle.Alloc */";
+        }
+
         // Default: regular function call
         string fullName = funcName + typeHint;
         return $"{fullName}({args})";
@@ -362,7 +581,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         string? subName = context.ambiguousIdentifier()?.GetText();
 
         // Process subroutine parameters
-        var parameters = "";
+        var parameters = string.Empty;
         if (context.argList() is not null)
         {
             var paramList = new List<string>();
@@ -378,7 +597,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
                 }
 
                 // BYVAL vs BYREF - C# uses ref keyword for BYREF
-                var modifier = "";
+                var modifier = string.Empty;
                 if (arg.BYREF() is not null)
                 {
                     modifier = "ref ";
@@ -414,7 +633,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         string returnType = ConvertType(context.asTypeClause()?.GetText());
 
         // Process function parameters
-        var parameters = "";
+        var parameters = string.Empty;
         if (context.argList() is not null)
         {
             var paramList = new List<string>();
@@ -430,7 +649,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
                 }
 
                 // BYVAL vs BYREF - C# uses ref keyword for BYREF
-                var modifier = "";
+                var modifier = string.Empty;
                 if (arg.BYREF() is not null)
                 {
                     modifier = "ref ";
@@ -449,12 +668,19 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         // Track current function name to replace assignments
         _currentFunctionName = functionName;
 
+        // Scan for loop variables before processing the block
+        _loopVariables.Clear();
+        PowerBasicParser.BlockContext? block = context.block();
+        if (block is not null)
+        {
+            CollectLoopVariables(block);
+        }
+
         // In PowerBASIC, the function name is used as a return value variable
         // Create a local variable with same name to hold the return value
         result += $"{Indent}{returnType} {functionName}_result;\n";
 
         // Visit function body
-        PowerBasicParser.BlockContext? block = context.block();
         if (block is not null)
         {
             result += Visit(block);
@@ -465,6 +691,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
 
         _indentLevel--;
         _currentFunctionName = null;
+        _loopVariables.Clear();
 
         result += $"{Indent}}}\n";
 
@@ -473,48 +700,74 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
 
     public override string VisitVariableStmt(PowerBasicParser.VariableStmtContext context)
     {
-        var result = "";
+        var result = string.Empty;
         PowerBasicParser.VariableListStmtContext? varList = context.variableListStmt();
 
         if (varList is null) return result;
         foreach (PowerBasicParser.VariableSubStmtContext? varSub in varList.variableSubStmt())
         {
             string? varName = varSub.ambiguousIdentifier()?.GetText();
-            string varType = ConvertType(varSub.asTypeClause()?.GetText());
 
-            // Track variable type for later use (e.g., adding suffixes to literals)
-            if (varName is not null)
+            // Skip loop variables - they'll be declared inline in the FOR statement
+            if (varName != null && _loopVariables.Contains(varName))
             {
-                _variableTypes[varName] = varType;
+                // Still track the type for later use
+                string loopVarType = ConvertType(varSub.asTypeClause()?.GetText());
+                _variableTypes[varName] = loopVarType;
+                continue;
             }
 
-            // Check if this is an array declaration (has subscripts)
-            if (varSub.subscripts() is not null)
+            string varType = ConvertType(varSub.asTypeClause()?.GetText());
+
+            // Check if this is a pointer type (has PTR suffix)
+            bool isPointer = varSub.asTypeClause()?.GetText()?.ToUpper().Contains("PTR") == true;
+
+            if (isPointer)
             {
-                // Track this as an array name
-                if (varName is not null)
-                {
-                    _arrayNames.Add(varName);
-                }
-
-                // Get array dimensions
-                List<string> dimensions =
-                    varSub.subscripts()
-                        .subscript()
-                        .Where(subscript => subscript.valueStmt() is not null)
-                        .Select(subscript => subscript.valueStmt())
-                        .Where(valueStmts => valueStmts.Length > 0)
-                        .Select(valueStmts => Visit(valueStmts[^1]))
-                        .Select(dimension => dimension ?? "").ToList();
-
-                // In C#, array declaration: type[] name = new type[size];
-                // PowerBASIC arrays are 0-based by default in modern versions
-                string arrayDecl = string.Join(", ", dimensions);
-                result += $"{Indent}{varType}[] {varName} = new {varType}[{arrayDecl} + 1];\n";
+                // Generate comment for pointer variable
+                result += $"{Indent}// ============================================================\n";
+                result += $"{Indent}// POINTER TYPE DETECTED - MANUAL CONVERSION REQUIRED\n";
+                result += $"{Indent}// PowerBASIC pointer: {varName} AS {varSub.asTypeClause()?.GetText()}\n";
+                result += $"{Indent}// Consider: IntPtr, unsafe pointers, or Span<T>/Memory<T>\n";
+                result += $"{Indent}// ============================================================\n";
+                result += $"{Indent}IntPtr {varName}; // TODO: Convert pointer operations\n";
             }
             else
             {
-                result += $"{Indent}{varType} {varName};\n";
+                // Track variable type for later use (e.g., adding suffixes to literals)
+                if (varName is not null)
+                {
+                    _variableTypes[varName] = varType;
+                }
+
+                // Check if this is an array declaration (has subscripts)
+                if (varSub.subscripts() is not null)
+                {
+                    // Track this as an array name
+                    if (varName is not null)
+                    {
+                        _arrayNames.Add(varName);
+                    }
+
+                    // Get array dimensions
+                    List<string> dimensions =
+                        varSub.subscripts()
+                            .subscript()
+                            .Where(subscript => subscript.valueStmt() is not null)
+                            .Select(subscript => subscript.valueStmt())
+                            .Where(valueStmts => valueStmts.Length > 0)
+                            .Select(valueStmts => Visit(valueStmts[^1]))
+                            .Select(dimension => dimension ?? string.Empty).ToList();
+
+                    // In C#, array declaration: type[] name = new type[size];
+                    // PowerBASIC arrays are 0-based by default in modern versions
+                    string arrayDecl = string.Join(", ", dimensions);
+                    result += $"{Indent}{varType}[] {varName} = new {varType}[{arrayDecl} + 1];\n";
+                }
+                else
+                {
+                    result += $"{Indent}{varType} {varName};\n";
+                }
             }
         }
 
@@ -546,7 +799,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
 
     public override string VisitSC_Case(PowerBasicParser.SC_CaseContext context)
     {
-        var result = "";
+        var result = string.Empty;
 
         // Visit the condition to get case labels (will be handled by specific visitors)
         result += Visit(context.sC_Cond());
@@ -579,7 +832,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         return context
             .sC_CondExpr()
             .Select(Visit)
-            .Aggregate("", (current, caseValue) => current + $"{Indent}case {caseValue}:\n");
+            .Aggregate(string.Empty, (current, caseValue) => current + $"{Indent}case {caseValue}:\n");
     }
 
     public override string VisitCaseCondExprValue(PowerBasicParser.CaseCondExprValueContext context)
@@ -591,7 +844,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     // IF statement visitors
     public override string VisitBlockIfThenElse(PowerBasicParser.BlockIfThenElseContext context)
     {
-        var result = "";
+        var result = string.Empty;
 
         // Visit the IF block
         result += Visit(context.ifBlockStmt());
@@ -699,7 +952,11 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
             stepValue = Visit(context.valueStmt(2));
         }
 
-        var result = $"{Indent}for ({loopVar} = {startValue}; {loopVar} <= {endValue}; {loopVar} += {stepValue})\n";
+        // Get the variable type from our tracking (loop variables are skipped in LOCAL processing)
+        // so we always declare them inline here
+        string varType = _variableTypes.TryGetValue(loopVar ?? "", out string? foundType) ? foundType : "int";
+
+        var result = $"{Indent}for ({varType} {loopVar} = {startValue}; {loopVar} <= {endValue}; {loopVar} += {stepValue})\n";
         result += $"{Indent}{{\n";
 
         _indentLevel++;
@@ -729,11 +986,65 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         return $"{Indent}{varName}--;\n";
     }
 
+    public override string VisitShiftStmt(PowerBasicParser.ShiftStmtContext context)
+    {
+        // SHIFT LEFT variable, count  -> variable <<= count
+        // SHIFT RIGHT variable, count -> variable >>= count
+        string? varName = context.implicitCallStmt_InStmt()?.GetText();
+        string? shiftCount = Visit(context.valueStmt());
+
+        bool isLeft = context.GetText().ToUpper().Contains("LEFT");
+        string op = isLeft ? "<<=" : ">>=";
+
+        return $"{Indent}{varName} {op} {shiftCount};\n";
+    }
+
+    public override string VisitRotateStmt(PowerBasicParser.RotateStmtContext context)
+    {
+        // ROTATE LEFT variable, count  -> variable = (variable << count) | (variable >> (32 - count))
+        // ROTATE RIGHT variable, count -> variable = (variable >> count) | (variable << (32 - count))
+        // Note: Assumes 32-bit integers (DWORD/LONG). For other sizes, manual adjustment needed.
+        string? varName = context.implicitCallStmt_InStmt()?.GetText();
+        string? rotateCount = Visit(context.valueStmt());
+
+        bool isLeft = context.GetText().ToUpper().Contains("LEFT");
+
+        if (isLeft)
+        {
+            return $"{Indent}{varName} = ({varName} << {rotateCount}) | ({varName} >> (32 - {rotateCount}));\n";
+        }
+        else
+        {
+            return $"{Indent}{varName} = ({varName} >> {rotateCount}) | ({varName} << (32 - {rotateCount}));\n";
+        }
+    }
+
+    // Note: VisitThreadStmt is not needed - thread statements are handled in VisitBlock()
+    // to group consecutive THREAD statements together with a single comment block
+
+    // Helper method to collect loop variables from FOR loops in a block
+    private void CollectLoopVariables(PowerBasicParser.BlockContext block)
+    {
+        foreach (var stmt in block.blockStmt())
+        {
+            if (stmt.forNextStmt() != null)
+            {
+                string? loopVar = stmt.forNextStmt().iCS_S_VariableOrProcedureCall()?.GetText();
+                if (loopVar != null)
+                {
+                    _loopVariables.Add(loopVar);
+                }
+            }
+            // Note: Not recursively checking nested blocks for simplicity
+            // If needed, FOR loops in nested blocks can be handled in future iterations
+        }
+    }
+
     // CLASS/INTERFACE/METHOD visitors
     public override string VisitClassStmt(PowerBasicParser.ClassStmtContext context)
     {
         string? className = context.ambiguousIdentifier()?.GetText();
-        var result = "";
+        var result = string.Empty;
 
         // Collect INSTANCE variables
         var instanceVariables = new List<(string Type, string Name)>();
@@ -762,7 +1073,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
                 var interfaceCtx = element.interfaceStmt();
                 var interfaceInfo = new InterfaceInfo
                 {
-                    Name = interfaceCtx.ambiguousIdentifier()?.GetText() ?? ""
+                    Name = interfaceCtx.ambiguousIdentifier()?.GetText() ?? string.Empty
                 };
 
                 // Collect inherited interfaces (filter out COM base interfaces)
@@ -798,7 +1109,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
 
                         var methodInfo = new MethodInfo
                         {
-                            Name = methodCtx.ambiguousIdentifier()?.GetText() ?? "",
+                            Name = methodCtx.ambiguousIdentifier()?.GetText() ?? string.Empty,
                             ReturnType = returnType,
                             Body = methodCtx.block()
                         };
@@ -810,7 +1121,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
                             {
                                 string? paramName = arg.ambiguousIdentifier()?.GetText();
                                 string paramType = ConvertType(arg.asTypeClause()?.GetText());
-                                string modifier = arg.BYREF() is not null ? "ref " : "";
+                                string modifier = arg.BYREF() is not null ? "ref " : string.Empty;
 
                                 if (paramName != null)
                                 {
@@ -917,7 +1228,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         if (context.INSTANCE() is not null && context.variableListStmt() is not null)
         {
             // Handle instance variables as class fields
-            var result = "";
+            var result = string.Empty;
             foreach (var variableSubStmt in context.variableListStmt().variableSubStmt())
             {
                 string? varName = variableSubStmt.ambiguousIdentifier()?.GetText();
@@ -977,7 +1288,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         string returnType = ConvertType(context.asTypeClause()?.GetText());
 
         // Process method parameters
-        var parameters = "";
+        var parameters = string.Empty;
         if (context.argList() is not null)
         {
             var paramList = new List<string>();
@@ -993,7 +1304,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
                 }
 
                 // BYVAL vs BYREF - C# uses ref keyword for BYREF
-                var modifier = "";
+                var modifier = string.Empty;
                 if (arg.BYREF() is not null)
                 {
                     modifier = "ref ";
@@ -1025,7 +1336,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         string? procName = context.ambiguousIdentifier()?.GetText();
 
         // Get the arguments
-        var args = "";
+        var args = string.Empty;
         if (context.argsCall() is not null)
         {
             args = Visit(context.argsCall());
@@ -1041,7 +1352,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         string? baseName = context.certainIdentifier()?.GetText();
         string? memberName = context.ambiguousIdentifier()?.GetText();
 
-        var args = "";
+        var args = string.Empty;
         if (context.argsCall() is not null)
         {
             args = Visit(context.argsCall());
@@ -1055,7 +1366,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     {
         string? procName = context.certainIdentifier()?.GetText();
 
-        var args = "";
+        var args = string.Empty;
         if (context.argsCall() is not null)
         {
             args = Visit(context.argsCall());
@@ -1111,6 +1422,84 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         }
 
         return $"{Indent}Console.WriteLine({output});\n";
+    }
+
+    // TYPE/UNION visitors
+    public override string VisitTypeStmt(PowerBasicParser.TypeStmtContext context)
+    {
+        string? typeName = context.ambiguousIdentifier()?.GetText();
+
+        // Check if this type contains a union
+        bool hasUnion = context.typeStmt_Element()
+            .Any(e => e is PowerBasicParser.TypeElement_UnionContext);
+
+        var result = string.Empty;
+
+        // Add StructLayout attribute if type contains union
+        if (hasUnion)
+        {
+            result += $"{Indent}[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Explicit)]\n";
+        }
+
+        result += $"{Indent}public struct {typeName}\n";
+        result += $"{Indent}{{\n";
+
+        _indentLevel++;
+
+        // Visit all type elements (fields and unions)
+        foreach (var element in context.typeStmt_Element())
+        {
+            result += Visit(element);
+        }
+
+        _indentLevel--;
+        result += $"{Indent}}}\n";
+
+        return result;
+    }
+
+    public override string VisitTypeElement_Union(PowerBasicParser.TypeElement_UnionContext context)
+    {
+        // Union members all start at offset 0 (overlapping memory)
+        var result = string.Empty;
+
+        foreach (var field in context.typeStmt_Element_Field())
+        {
+            result += $"{Indent}[System.Runtime.InteropServices.FieldOffset(0)]\n";
+            result += Visit(field);
+        }
+
+        return result;
+    }
+
+    public override string VisitTypeElement_Field(PowerBasicParser.TypeElement_FieldContext context)
+    {
+        return VisitTypeStmt_Element_Field(context.typeStmt_Element_Field());
+    }
+
+    public override string VisitTypeStmt_Element_Field(PowerBasicParser.TypeStmt_Element_FieldContext context)
+    {
+        string? fieldName = context.ambiguousIdentifier()?.GetText();
+        string fieldType = ConvertType(context.asTypeClause()?.GetText());
+
+        // Check if it's an array
+        if (context.subscripts() is not null)
+        {
+            // Get array bounds
+            var subscripts = context.subscripts();
+            var bounds = subscripts.subscript();
+
+            if (bounds.Length > 0)
+            {
+                // For simplicity, use the upper bound as size (assuming 0-based)
+                var upperBound = bounds[0].GetText();
+                // In PowerBASIC arrays can be 1-based, but we'll use fixed-size arrays
+                return $"{Indent}[System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValArray, SizeConst = {upperBound})]\n" +
+                       $"{Indent}public {fieldType}[] {fieldName};\n";
+            }
+        }
+
+        return $"{Indent}public {fieldType} {fieldName};\n";
     }
 
     private static string ConvertType(string? pbType)

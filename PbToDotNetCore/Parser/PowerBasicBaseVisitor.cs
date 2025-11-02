@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-// Generated from src/main/antlr4/io/proleap/vb6/PowerBasic.g4 by ANTLR 4.13.2
+// Generated from C:/Users/jorda/RiderProjects/PbToDotNetCore/powerbasic-parser/src/main/antlr4/io/proleap/vb6/PowerBasic.g4 by ANTLR 4.13.2
 
 // Unreachable code detected
 #pragma warning disable 0162
@@ -1311,7 +1311,8 @@ public partial class PowerBasicBaseVisitor<Result> : AbstractParseTreeVisitor<Re
 	/// <return>The visitor result.</return>
 	public virtual Result VisitTypeStmt([NotNull] PowerBasicParser.TypeStmtContext context) { return VisitChildren(context); }
 	/// <summary>
-	/// Visit a parse tree produced by <see cref="PowerBasicParser.typeStmt_Element"/>.
+	/// Visit a parse tree produced by the <c>typeElement_Union</c>
+	/// labeled alternative in <see cref="PowerBasicParser.typeStmt_Element"/>.
 	/// <para>
 	/// The default implementation returns the result of calling <see cref="AbstractParseTreeVisitor{Result}.VisitChildren(IRuleNode)"/>
 	/// on <paramref name="context"/>.
@@ -1319,7 +1320,28 @@ public partial class PowerBasicBaseVisitor<Result> : AbstractParseTreeVisitor<Re
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
 	/// <return>The visitor result.</return>
-	public virtual Result VisitTypeStmt_Element([NotNull] PowerBasicParser.TypeStmt_ElementContext context) { return VisitChildren(context); }
+	public virtual Result VisitTypeElement_Union([NotNull] PowerBasicParser.TypeElement_UnionContext context) { return VisitChildren(context); }
+	/// <summary>
+	/// Visit a parse tree produced by the <c>typeElement_Field</c>
+	/// labeled alternative in <see cref="PowerBasicParser.typeStmt_Element"/>.
+	/// <para>
+	/// The default implementation returns the result of calling <see cref="AbstractParseTreeVisitor{Result}.VisitChildren(IRuleNode)"/>
+	/// on <paramref name="context"/>.
+	/// </para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	/// <return>The visitor result.</return>
+	public virtual Result VisitTypeElement_Field([NotNull] PowerBasicParser.TypeElement_FieldContext context) { return VisitChildren(context); }
+	/// <summary>
+	/// Visit a parse tree produced by <see cref="PowerBasicParser.typeStmt_Element_Field"/>.
+	/// <para>
+	/// The default implementation returns the result of calling <see cref="AbstractParseTreeVisitor{Result}.VisitChildren(IRuleNode)"/>
+	/// on <paramref name="context"/>.
+	/// </para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	/// <return>The visitor result.</return>
+	public virtual Result VisitTypeStmt_Element_Field([NotNull] PowerBasicParser.TypeStmt_Element_FieldContext context) { return VisitChildren(context); }
 	/// <summary>
 	/// Visit a parse tree produced by <see cref="PowerBasicParser.unionStmt"/>.
 	/// <para>

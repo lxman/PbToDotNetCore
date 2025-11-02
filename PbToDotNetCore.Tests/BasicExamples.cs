@@ -121,9 +121,8 @@ public class BasicExamples
                                     public int PBMAIN()
                                     {
                                         int PBMAIN_result;
-                                        int i;
                                         string result;
-                                        for (i = 1; i <= 10; i += 1)
+                                        for (int i = 1; i <= 10; i += 1)
                                         {
                                             result = result + i.ToString() + " ";
                                         }
@@ -230,9 +229,8 @@ public class BasicExamples
                                     {
                                         int PBMAIN_result;
                                         int[] numbers = new int[10 + 1];
-                                        int i;
                                         int total;
-                                        for (i = 1; i <= 10; i += 1)
+                                        for (int i = 1; i <= 10; i += 1)
                                         {
                                             numbers[i] = i * 2;
                                             total = total + numbers[i];

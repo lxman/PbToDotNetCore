@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-// Generated from src/main/antlr4/io/proleap/vb6/PowerBasic.g4 by ANTLR 4.13.2
+// Generated from C:/Users/jorda/RiderProjects/PbToDotNetCore/powerbasic-parser/src/main/antlr4/io/proleap/vb6/PowerBasic.g4 by ANTLR 4.13.2
 
 // Unreachable code detected
 #pragma warning disable 0162
@@ -804,11 +804,25 @@ public interface IPowerBasicVisitor<Result> : IParseTreeVisitor<Result> {
 	/// <return>The visitor result.</return>
 	Result VisitTypeStmt([NotNull] PowerBasicParser.TypeStmtContext context);
 	/// <summary>
-	/// Visit a parse tree produced by <see cref="PowerBasicParser.typeStmt_Element"/>.
+	/// Visit a parse tree produced by the <c>typeElement_Union</c>
+	/// labeled alternative in <see cref="PowerBasicParser.typeStmt_Element"/>.
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
 	/// <return>The visitor result.</return>
-	Result VisitTypeStmt_Element([NotNull] PowerBasicParser.TypeStmt_ElementContext context);
+	Result VisitTypeElement_Union([NotNull] PowerBasicParser.TypeElement_UnionContext context);
+	/// <summary>
+	/// Visit a parse tree produced by the <c>typeElement_Field</c>
+	/// labeled alternative in <see cref="PowerBasicParser.typeStmt_Element"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	/// <return>The visitor result.</return>
+	Result VisitTypeElement_Field([NotNull] PowerBasicParser.TypeElement_FieldContext context);
+	/// <summary>
+	/// Visit a parse tree produced by <see cref="PowerBasicParser.typeStmt_Element_Field"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	/// <return>The visitor result.</return>
+	Result VisitTypeStmt_Element_Field([NotNull] PowerBasicParser.TypeStmt_Element_FieldContext context);
 	/// <summary>
 	/// Visit a parse tree produced by <see cref="PowerBasicParser.unionStmt"/>.
 	/// </summary>

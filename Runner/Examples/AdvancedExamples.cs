@@ -188,7 +188,7 @@ public static class AdvancedExamples
         END FUNCTION
         """;
 
-    // Thread example
+    // Thread example - Note: THREAD CREATE with function arguments not supported
     public const string ThreadExample = """
         #COMPILE EXE
         #DIM ALL
@@ -203,8 +203,7 @@ public static class AdvancedExamples
 
         FUNCTION PBMAIN() AS LONG
             LOCAL hThread AS DWORD
-
-            THREAD CREATE WorkerThread(0) TO hThread
+            THREAD CREATE WorkerThread TO hThread
             MSGBOX "Thread started"
             THREAD WAIT hThread
             MSGBOX "Thread completed"
