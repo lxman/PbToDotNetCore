@@ -365,4 +365,54 @@ public class AdvancedExamples
                                 """;
         DiffCheck.Verify(expected, actual);
     }
+
+    [Fact]
+    public void TestSourceCode1()
+    {
+        string actual = PbToCsConverter.GenerateCsCode(Runner.Examples.AdvancedExamples.SourceCode1);
+        const string expected = """
+                                using System;
+                                using System.Windows.Forms;
+                                
+                                public class PowerBasicModule
+                                {
+                                    public interface IStatus
+                                    {
+                                        void Done();
+                                    }
+                                
+                                    public class EvClass : IStatus
+                                    {
+                                        public void Done()
+                                        {
+                                            Console.WriteLine("Done!");
+                                        }
+                                
+                                    }
+                                    public interface IMath
+                                    {
+                                        void DoMath();
+                                    }
+                                
+                                    public class MyClass : IMath
+                                    {
+                                        public void DoMath()
+                                        {
+                                            Console.WriteLine("Calculating...");
+                                        }
+                                
+                                    }
+                                    public object PBMAIN()
+                                    {
+                                        object PBMAIN_result;
+                                        IMath oMath;
+                                        IStatus oStatus;
+                                        oMath = new MyClass();
+                                        oStatus = new EvClass();
+                                        return PBMAIN_result;
+                                    }
+                                }
+                                """;
+        DiffCheck.Verify(expected, actual);
+    }
 }

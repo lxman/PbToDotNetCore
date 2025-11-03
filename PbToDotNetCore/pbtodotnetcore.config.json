@@ -1,0 +1,6 @@
+{
+  "GuiFramework": "None",
+  "Comments": {
+    "GuiFramework": "Specifies the target GUI framework for PowerBASIC GUI code conversion. Valid values: 'None', 'WinForms', 'Wpf'. Default: 'None'"
+  }
+}

@@ -1,4 +1,5 @@
 ﻿using PbToDotNetCore.Parser;
+using PbToDotNetCore.Gui;
 
 namespace PbToDotNetCore;
 
@@ -27,6 +28,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     private readonly HashSet<string> _arrayNames = [];
     private readonly Dictionary<string, string> _variableTypes = [];
     private readonly HashSet<string> _loopVariables = [];
+    private readonly IGuiConverter _guiConverter;
 
     // Track whether we're currently processing a method body
     private bool _isInMethodBody = false;
@@ -47,7 +49,15 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         "IDROPTARGET",
         "IDROPSOURCE"
     };
-    
+
+    public PbToCSharpConverter()
+    {
+        // Load configuration from file if not already loaded
+        ConfigurationLoader.LoadConfiguration();
+
+        _guiConverter = GuiConverterFactory.GetConverter();
+    }
+
     // Root-level visitors
     public override string VisitStartRule(PowerBasicParser.StartRuleContext context)
     {
@@ -1017,6 +1027,38 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         {
             return $"{Indent}{varName} = ({varName} >> {rotateCount}) | ({varName} << (32 - {rotateCount}));\n";
         }
+    }
+
+    public override string VisitExitStmt(PowerBasicParser.ExitStmtContext context)
+    {
+        // EXIT FOR → break;
+        // EXIT DO → break;
+        // EXIT FUNCTION → return;
+        // EXIT SUB → return;
+        // EXIT PROPERTY → return;
+
+        if (context.EXIT_FOR() != null)
+        {
+            return $"{Indent}break;\n";
+        }
+        else if (context.EXIT_DO() != null)
+        {
+            return $"{Indent}break;\n";
+        }
+        else if (context.EXIT_FUNCTION() != null)
+        {
+            return $"{Indent}return;\n";
+        }
+        else if (context.EXIT_SUB() != null)
+        {
+            return $"{Indent}return;\n";
+        }
+        else if (context.EXIT_PROPERTY() != null)
+        {
+            return $"{Indent}return;\n";
+        }
+
+        return string.Empty;
     }
 
     // Note: VisitThreadStmt is not needed - thread statements are handled in VisitBlock()
