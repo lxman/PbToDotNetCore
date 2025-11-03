@@ -28,7 +28,7 @@ public class AdvancedExamples
                                     }
                                     public int PBMAIN()
                                     {
-                                        int PBMAIN_result;
+                                        int PBMAIN_result = default;
                                         MyInterface obj;
                                         obj = new MyClass();
                                         obj.SayHello();
@@ -79,7 +79,7 @@ public class AdvancedExamples
                                     }
                                     public int PBMAIN()
                                     {
-                                        int PBMAIN_result;
+                                        int PBMAIN_result = default;
                                         ICounter counter;
                                         int value;
                                         counter = new Counter();
@@ -140,7 +140,7 @@ public class AdvancedExamples
                                     }
                                     public int PBMAIN()
                                     {
-                                        int PBMAIN_result;
+                                        int PBMAIN_result = default;
                                         IMath math;
                                         IHistory history;
                                         double result;
@@ -179,7 +179,7 @@ public class AdvancedExamples
                                     }
                                     public int PBMAIN()
                                     {
-                                        int PBMAIN_result;
+                                        int PBMAIN_result = default;
                                         DataUnion data;
                                         data.LongValue = -1;
                                         MessageBox.Show("LONG: " + data.LongValue.ToString() + Environment.NewLine + "DWORD: " + data.DWordValue.ToString());
@@ -202,7 +202,7 @@ public class AdvancedExamples
                                 {
                                     public int PBMAIN()
                                     {
-                                        int PBMAIN_result;
+                                        int PBMAIN_result = default;
                                         int result;
                                         // ============================================================
                                         // INLINE ASSEMBLY DETECTED - MANUAL CONVERSION REQUIRED
@@ -234,7 +234,7 @@ public class AdvancedExamples
                                 {
                                     public int PBMAIN()
                                     {
-                                        int PBMAIN_result;
+                                        int PBMAIN_result = default;
                                         int value;
                                         // ============================================================
                                         // POINTER TYPE DETECTED - MANUAL CONVERSION REQUIRED
@@ -300,7 +300,7 @@ public class AdvancedExamples
                                 {
                                     public int WorkerThread(uint param)
                                     {
-                                        int WorkerThread_result;
+                                        int WorkerThread_result = default;
                                         for (int i = 1; i <= 5; i += 1)
                                         {
                                             SLEEP(500);
@@ -310,7 +310,7 @@ public class AdvancedExamples
                                     }
                                     public int PBMAIN()
                                     {
-                                        int PBMAIN_result;
+                                        int PBMAIN_result = default;
                                         uint hThread;
                                         // ============================================================
                                         // THREAD BLOCK DETECTED - MANUAL CONVERSION REQUIRED
@@ -349,7 +349,7 @@ public class AdvancedExamples
                                 {
                                     public int PBMAIN()
                                     {
-                                        int PBMAIN_result;
+                                        int PBMAIN_result = default;
                                         uint value;
                                         uint shifted;
                                         uint rotated;
@@ -404,7 +404,7 @@ public class AdvancedExamples
                                     }
                                     public object PBMAIN()
                                     {
-                                        object PBMAIN_result;
+                                        object PBMAIN_result = default;
                                         IMath oMath;
                                         IStatus oStatus;
                                         oMath = new MyClass();

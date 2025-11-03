@@ -14,7 +14,7 @@ public class BasicExamples
                                 {
                                   public int PBMAIN()
                                   {
-                                      int PBMAIN_result;
+                                      int PBMAIN_result = default;
                                       MessageBox.Show("Hello World");
                                       return PBMAIN_result;
                                   }
@@ -35,7 +35,7 @@ public class BasicExamples
                                 {
                                     public int Add(int x, int y)
                                     {
-                                        int Add_result;
+                                        int Add_result = default;
                                         int result;
                                         result = x + y;
                                         Add_result = result;
@@ -43,7 +43,7 @@ public class BasicExamples
                                     }
                                     public int PBMAIN()
                                     {
-                                        int PBMAIN_result;
+                                        int PBMAIN_result = default;
                                         int answer;
                                         answer = Add(5, 10);
                                         MessageBox.Show("5 + 10 = " + answer.ToString());
@@ -66,7 +66,7 @@ public class BasicExamples
                                 {
                                     public int PBMAIN()
                                     {
-                                        int PBMAIN_result;
+                                        int PBMAIN_result = default;
                                         string name;
                                         int age;
                                         double price;
@@ -99,7 +99,7 @@ public class BasicExamples
                                     }
                                     public int PBMAIN()
                                     {
-                                        int PBMAIN_result;
+                                        int PBMAIN_result = default;
                                         PrintMessage("Hello from SUB");
                                         return PBMAIN_result;
                                     }
@@ -120,7 +120,7 @@ public class BasicExamples
                                 {
                                     public int PBMAIN()
                                     {
-                                        int PBMAIN_result;
+                                        int PBMAIN_result = default;
                                         string result;
                                         for (int i = 1; i <= 10; i += 1)
                                         {
@@ -146,7 +146,7 @@ public class BasicExamples
                                 {
                                     public int PBMAIN()
                                     {
-                                        int PBMAIN_result;
+                                        int PBMAIN_result = default;
                                         int number;
                                         string msg;
                                         number = 42;
@@ -182,7 +182,7 @@ public class BasicExamples
                                 {
                                     public int PBMAIN()
                                     {
-                                        int PBMAIN_result;
+                                        int PBMAIN_result = default;
                                         int dayNum;
                                         string dayName;
                                         dayNum = 3;
@@ -227,7 +227,7 @@ public class BasicExamples
                                 {
                                     public int PBMAIN()
                                     {
-                                        int PBMAIN_result;
+                                        int PBMAIN_result = default;
                                         int[] numbers = new int[10 + 1];
                                         int total;
                                         for (int i = 1; i <= 10; i += 1)
@@ -255,7 +255,7 @@ public class BasicExamples
                                 {
                                     public object RandomAdd()
                                     {
-                                        object RandomAdd_result;
+                                        object RandomAdd_result = default;
                                         return RandomAdd_result;
                                     }
                                 }

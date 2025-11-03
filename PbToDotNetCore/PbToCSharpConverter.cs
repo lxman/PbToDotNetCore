@@ -25,6 +25,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     private int _indentLevel = 0;
     private string Indent => new(' ', _indentLevel * 4);
     private string? _currentFunctionName;
+    private bool _isInVoidFunction = false; // true for SUB, false for FUNCTION
     private readonly HashSet<string> _arrayNames = [];
     private readonly Dictionary<string, string> _variableTypes = [];
     private readonly HashSet<string> _loopVariables = [];
@@ -590,6 +591,10 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     {
         string? subName = context.ambiguousIdentifier()?.GetText();
 
+        // Mark that we're in a void function (SUB)
+        _isInVoidFunction = true;
+        _currentFunctionName = subName;
+
         // Process subroutine parameters
         var parameters = string.Empty;
         if (context.argList() is not null)
@@ -634,6 +639,10 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
 
         result += $"{Indent}}}\n";
 
+        // Reset flags
+        _isInVoidFunction = false;
+        _currentFunctionName = null;
+
         return result;
     }
 
@@ -677,6 +686,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
 
         // Track current function name to replace assignments
         _currentFunctionName = functionName;
+        _isInVoidFunction = false; // FUNCTIONs have return values
 
         // Scan for loop variables before processing the block
         _loopVariables.Clear();
@@ -688,7 +698,8 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
 
         // In PowerBASIC, the function name is used as a return value variable
         // Create a local variable with same name to hold the return value
-        result += $"{Indent}{returnType} {functionName}_result;\n";
+        // Initialize to default value to avoid C# uninitialized variable warnings
+        result += $"{Indent}{returnType} {functionName}_result = default;\n";
 
         // Visit function body
         if (block is not null)
@@ -983,6 +994,63 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         return result;
     }
 
+    // DO...LOOP visitor
+    public override string VisitDoLoopStmt(PowerBasicParser.DoLoopStmtContext context)
+    {
+        string result = "";
+
+        // Check for WHILE/UNTIL at the beginning (DO WHILE ... LOOP or DO UNTIL ... LOOP)
+        bool hasWhileAtStart = context.WHILE() != null && context.valueStmt() != null;
+        bool hasUntilAtStart = context.UNTIL() != null && context.valueStmt() != null;
+
+        if (hasWhileAtStart)
+        {
+            // DO WHILE condition ... LOOP → while (condition) { ... }
+            string? condition = Visit(context.valueStmt());
+            result += $"{Indent}while ({condition})\n";
+            result += $"{Indent}{{\n";
+        }
+        else if (hasUntilAtStart)
+        {
+            // DO UNTIL condition ... LOOP → while (!(condition)) { ... }
+            string? condition = Visit(context.valueStmt());
+            result += $"{Indent}while (!({condition}))\n";
+            result += $"{Indent}{{\n";
+        }
+        else
+        {
+            // DO ... LOOP (infinite or with condition at end)
+            // Convert to do { ... } while (true) or do { ... } while (condition)
+            result += $"{Indent}do\n";
+            result += $"{Indent}{{\n";
+        }
+
+        _indentLevel++;
+
+        // Visit loop body
+        if (context.block() != null)
+        {
+            result += Visit(context.block());
+        }
+
+        _indentLevel--;
+
+        // Check if there's a condition at the end (DO ... LOOP WHILE/UNTIL condition)
+        // Note: This would be in a different grammar rule, but for simple DO...LOOP,
+        // we just close with while(true) or just closing brace
+        if (!hasWhileAtStart && !hasUntilAtStart)
+        {
+            // Simple DO...LOOP becomes do { ... } while (true)
+            result += $"{Indent}}} while (true);\n";
+        }
+        else
+        {
+            result += $"{Indent}}}\n";
+        }
+
+        return result;
+    }
+
     // INCR and DECR statement visitors
     public override string VisitIncrStmt(PowerBasicParser.IncrStmtContext context)
     {
@@ -1033,7 +1101,7 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     {
         // EXIT FOR → break;
         // EXIT DO → break;
-        // EXIT FUNCTION → return;
+        // EXIT FUNCTION → return functionName_result; (if function has return value)
         // EXIT SUB → return;
         // EXIT PROPERTY → return;
 
@@ -1047,6 +1115,11 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         }
         else if (context.EXIT_FUNCTION() != null)
         {
+            // For FUNCTIONs with return value, return the result variable
+            if (!_isInVoidFunction && _currentFunctionName is not null)
+            {
+                return $"{Indent}return {_currentFunctionName}_result;\n";
+            }
             return $"{Indent}return;\n";
         }
         else if (context.EXIT_SUB() != null)

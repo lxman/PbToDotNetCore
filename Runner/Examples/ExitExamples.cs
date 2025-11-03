@@ -64,8 +64,8 @@ public static class ExitExamples
         END SUB
 
         FUNCTION PBMAIN() AS LONG
-            ProcessValue(0)
-            ProcessValue(10)
+            CALL ProcessValue(0)
+            CALL ProcessValue(10)
         END FUNCTION
         """;
 
