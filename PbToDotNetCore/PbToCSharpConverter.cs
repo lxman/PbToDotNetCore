@@ -31,6 +31,10 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     private readonly HashSet<string> _loopVariables = [];
     private readonly IGuiConverter _guiConverter;
 
+    // Track file handles for file I/O operations
+    private readonly Dictionary<string, string> _fileHandles = []; // Maps file number to variable name
+    private bool _hasFileOperations = false;
+
     // Track whether we're currently processing a method body
     private bool _isInMethodBody = false;
     private string? _currentMethodReturnType = null;
@@ -70,21 +74,27 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     {
         var result = string.Empty;
 
-        // Add using statements for C#
-        result += "using System;\n";
-        result += "using System.Windows.Forms;\n\n";
-
         // Visit compiler directives (optional)
         if (context.compilerDirectives() is not null)
           result += Visit(context.compilerDirectives());
+
+        // Visit module body to detect file operations (first pass)
+        string moduleBody = string.Empty;
+        if (context.moduleBody() is not null)
+          moduleBody = Visit(context.moduleBody());
+
+        // Add using statements for C#
+        result += "using System;\n";
+        if (_hasFileOperations)
+            result += "using System.IO;\n";
+        result += "using System.Windows.Forms;\n\n";
 
         // Create a class wrapper for the module
         result += "public class PowerBasicModule\n{\n";
         _indentLevel++;
 
-        // Visit module body (functions, subs, etc.)
-        if (context.moduleBody() is not null)
-          result += Visit(context.moduleBody());
+        // Add the processed module body
+        result += moduleBody;
 
         _indentLevel--;
         result += "}\n";
@@ -795,6 +805,56 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
         return result;
     }
 
+    // CONST statement visitor
+    public override string VisitConstStmt(PowerBasicParser.ConstStmtContext context)
+    {
+        var result = string.Empty;
+
+        // Check for visibility modifier (PUBLIC, PRIVATE, GLOBAL)
+        var visibility = context.publicPrivateGlobalVisibility();
+        string visibilityModifier = "";
+        if (visibility != null)
+        {
+            string visText = visibility.GetText().ToUpper();
+            if (visText == "PUBLIC" || visText == "GLOBAL")
+                visibilityModifier = "public ";
+            else if (visText == "PRIVATE")
+                visibilityModifier = "private ";
+        }
+
+        // Process each constant declaration
+        foreach (var constSub in context.constSubStmt())
+        {
+            string? constName = constSub.ambiguousIdentifier()?.GetText();
+            string? value = Visit(constSub.valueStmt());
+
+            // Determine type from AS clause or infer from value
+            string constType = "object"; // default
+            if (constSub.asTypeClause() != null)
+            {
+                constType = ConvertType(constSub.asTypeClause().GetText());
+            }
+            else
+            {
+                // Try to infer type from value
+                if (value != null)
+                {
+                    if (value.StartsWith("\"") || value.StartsWith("'"))
+                        constType = "string";
+                    else if (value.Contains("."))
+                        constType = "double";
+                    else if (value.All(c => char.IsDigit(c) || c == '-'))
+                        constType = "int";
+                }
+            }
+
+            // Generate C# const declaration
+            result += $"{Indent}{visibilityModifier}const {constType} {constName} = {value};\n";
+        }
+
+        return result;
+    }
+
     // SELECT CASE visitor
     public override string VisitSelectCaseStmt(PowerBasicParser.SelectCaseStmtContext context)
     {
@@ -1048,6 +1108,30 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
             result += $"{Indent}}}\n";
         }
 
+        return result;
+    }
+
+    // WHILE...WEND statement visitor
+    public override string VisitWhileWendStmt(PowerBasicParser.WhileWendStmtContext context)
+    {
+        string result = "";
+
+        // WHILE condition ... WEND → while (condition) { ... }
+        string? condition = Visit(context.valueStmt());
+        result += $"{Indent}while ({condition})\n";
+        result += $"{Indent}{{\n";
+
+        _indentLevel++;
+        if (context.block() != null)
+        {
+            foreach (var block in context.block())
+            {
+                result += Visit(block);
+            }
+        }
+        _indentLevel--;
+
+        result += $"{Indent}}}\n";
         return result;
     }
 
@@ -1519,24 +1603,246 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     }
 
     // Print statement visitor
-    public override string VisitPrintStmt(PowerBasicParser.PrintStmtContext context)
+    // File I/O statement visitors
+    public override string VisitOpenStmt(PowerBasicParser.OpenStmtContext context)
     {
-        // Get the value/output to print
-        string? output;
-        if (context.valueStmt() is not null)
+        _hasFileOperations = true;
+
+        // Get file path
+        string? filePath = context.valueStmt(0) != null ? Visit(context.valueStmt(0)) : "\"\"";
+
+        // Get file number
+        string? fileNumber = context.valueStmt(1) != null ? Visit(context.valueStmt(1)) : "1";
+
+        // Determine file mode
+        string fileMode = "INPUT"; // default
+        string streamType = "StreamReader"; // default
+        string openMode = "File.OpenRead(";
+
+        if (context.OUTPUT() != null)
         {
-            output = Visit(context.valueStmt());
+            fileMode = "OUTPUT";
+            streamType = "StreamWriter";
+            openMode = "new StreamWriter(";
         }
-        else if (context.outputList() is not null)
+        else if (context.APPEND() != null)
         {
-            output = Visit(context.outputList());
+            fileMode = "APPEND";
+            streamType = "StreamWriter";
+            openMode = "new StreamWriter(";
+        }
+        else if (context.INPUT() != null)
+        {
+            fileMode = "INPUT";
+            streamType = "StreamReader";
+            openMode = "new StreamReader(";
+        }
+        else if (context.BINARY() != null || context.RANDOM() != null)
+        {
+            // For binary/random access, we'd need FileStream
+            streamType = "FileStream";
+            openMode = "new FileStream(";
+        }
+
+        // Clean file number (remove # if present)
+        if (fileNumber.StartsWith("#"))
+            fileNumber = fileNumber[1..];
+
+        // Generate file variable name
+        string fileVar = $"file{fileNumber}";
+        _fileHandles[fileNumber] = fileVar;
+
+        // Generate appropriate C# code
+        string result = "";
+        if (fileMode == "OUTPUT")
+        {
+            result = $"{Indent}{streamType} {fileVar} = {openMode}{filePath}, false);\n";
+        }
+        else if (fileMode == "APPEND")
+        {
+            result = $"{Indent}{streamType} {fileVar} = {openMode}{filePath}, true);\n";
+        }
+        else if (fileMode == "INPUT")
+        {
+            result = $"{Indent}{streamType} {fileVar} = {openMode}{filePath});\n";
         }
         else
         {
-            output = "\"\"";
+            // Binary/Random - need FileMode and FileAccess parameters
+            result = $"{Indent}{streamType} {fileVar} = {openMode}{filePath}, FileMode.Open, FileAccess.ReadWrite);\n";
         }
 
-        return $"{Indent}Console.WriteLine({output});\n";
+        return result;
+    }
+
+    public override string VisitCloseStmt(PowerBasicParser.CloseStmtContext context)
+    {
+        string result = "";
+
+        // If no file numbers specified, close all open files
+        if (context.valueStmt() == null || context.valueStmt().Length == 0)
+        {
+            foreach (var fileHandle in _fileHandles.Values)
+            {
+                result += $"{Indent}{fileHandle}?.Close();\n";
+            }
+            _fileHandles.Clear();
+        }
+        else
+        {
+            // Close specific file(s)
+            foreach (var fileNumExpr in context.valueStmt())
+            {
+                string? fileNumber = Visit(fileNumExpr);
+                if (fileNumber.StartsWith("#"))
+                    fileNumber = fileNumber[1..];
+
+                if (_fileHandles.TryGetValue(fileNumber, out var fileVar))
+                {
+                    result += $"{Indent}{fileVar}?.Close();\n";
+                    _fileHandles.Remove(fileNumber);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    public override string VisitPrintStmt(PowerBasicParser.PrintStmtContext context)
+    {
+        // Check if this is file output by examining the outputList
+        if (context.outputList() != null)
+        {
+            var outputExpressions = context.outputList().outputList_Expression();
+            if (outputExpressions != null && outputExpressions.Length > 0)
+            {
+                // Check if first expression is a file number
+                var firstExpr = outputExpressions[0];
+                if (firstExpr.valueStmt() != null)
+                {
+                    var vsContext = firstExpr.valueStmt();
+                    // Check if it's a literal file number
+                    if (vsContext is PowerBasicParser.VsLiteralContext vsLiteral)
+                    {
+                        var literal = vsLiteral.literal();
+                        if (literal?.FILENUMBER() != null)
+                        {
+                            // It's a file print!
+                            string fileNumber = literal.FILENUMBER().GetText();
+                            if (fileNumber.StartsWith("#"))
+                                fileNumber = fileNumber[1..];
+
+                            if (_fileHandles.TryGetValue(fileNumber, out var fileVar))
+                            {
+                                // Build the output from remaining expressions
+                                string output = "";
+                                for (int i = 1; i < outputExpressions.Length; i++)
+                                {
+                                    if (i > 1) output += " + ";
+                                    var expr = outputExpressions[i];
+                                    if (expr.valueStmt() != null)
+                                    {
+                                        output += Visit(expr.valueStmt());
+                                    }
+                                }
+
+                                if (string.IsNullOrEmpty(output))
+                                    output = "\"\"";
+
+                                return $"{Indent}{fileVar}.WriteLine({output});\n";
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Regular console output
+        string? consoleOutput;
+        if (context.valueStmt() is not null)
+        {
+            consoleOutput = Visit(context.valueStmt());
+        }
+        else if (context.outputList() is not null)
+        {
+            consoleOutput = Visit(context.outputList());
+        }
+        else
+        {
+            consoleOutput = "\"\"";
+        }
+
+        return $"{Indent}Console.WriteLine({consoleOutput});\n";
+    }
+
+    public override string VisitInputStmt(PowerBasicParser.InputStmtContext context)
+    {
+        // INPUT #filenum, var1, var2, ...
+        // or INPUT var1, var2, ... (from console)
+
+        var valueStmts = context.valueStmt();
+        if (valueStmts == null || valueStmts.Length == 0)
+            return "";
+
+        string result = "";
+
+        // Check if first value is a file number
+        string firstValue = valueStmts[0].GetText();
+        if (firstValue.StartsWith("#"))
+        {
+            // File input
+            string fileNumber = firstValue[1..];
+            if (_fileHandles.TryGetValue(fileNumber, out var fileVar))
+            {
+                // Read from file for each variable
+                for (int i = 1; i < valueStmts.Length; i++)
+                {
+                    string? varName = Visit(valueStmts[i]);
+                    result += $"{Indent}{varName} = {fileVar}.ReadLine();\n";
+                }
+            }
+        }
+        else
+        {
+            // Console input
+            foreach (var valueStmt in valueStmts)
+            {
+                string? varName = Visit(valueStmt);
+                result += $"{Indent}{varName} = Console.ReadLine();\n";
+            }
+        }
+
+        return result;
+    }
+
+    public override string VisitLineInputStmt(PowerBasicParser.LineInputStmtContext context)
+    {
+        // LINE INPUT #filenum, stringvar
+        // or LINE INPUT stringvar (from console)
+
+        var valueStmts = context.valueStmt();
+        if (valueStmts == null || valueStmts.Length < 2)
+            return "";
+
+        string fileNumOrVar = Visit(valueStmts[0]);
+        string varName = Visit(valueStmts[1]);
+
+        if (fileNumOrVar.StartsWith("#"))
+        {
+            // File input
+            string fileNumber = fileNumOrVar[1..];
+            if (_fileHandles.TryGetValue(fileNumber, out var fileVar))
+            {
+                return $"{Indent}{varName} = {fileVar}.ReadLine();\n";
+            }
+        }
+        else
+        {
+            // Console input - first item was the variable
+            return $"{Indent}{fileNumOrVar} = Console.ReadLine();\n";
+        }
+
+        return "";
     }
 
     // TYPE/UNION visitors
