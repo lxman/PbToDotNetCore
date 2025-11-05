@@ -35,6 +35,11 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
     private readonly Dictionary<string, string> _fileHandles = []; // Maps file number to variable name
     private bool _hasFileOperations = false;
 
+    // Error handling state
+    private bool _hasErrorHandling = false;
+    private string? _currentErrorHandler = null;
+    private bool _isInErrorHandler = false;
+
     // Track whether we're currently processing a method body
     private bool _isInMethodBody = false;
     private string? _currentMethodReturnType = null;
@@ -792,8 +797,18 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
 
                     // In C#, array declaration: type[] name = new type[size];
                     // PowerBASIC arrays are 0-based by default in modern versions
-                    string arrayDecl = string.Join(", ", dimensions);
-                    result += $"{Indent}{varType}[] {varName} = new {varType}[{arrayDecl} + 1];\n";
+                    if (dimensions.Count == 1)
+                    {
+                        string arrayDecl = dimensions[0];
+                        result += $"{Indent}{varType}[] {varName} = new {varType}[{arrayDecl} + 1];\n";
+                    }
+                    else
+                    {
+                        // Multi-dimensional array
+                        string arrayTypeDecl = varType + "[" + string.Concat(Enumerable.Repeat(",", dimensions.Count - 1)) + "]";
+                        string arrayInitDecl = string.Join(",", dimensions.Select(d => $"{d} + 1"));
+                        result += $"{Indent}{arrayTypeDecl} {varName} = new {varType}[{arrayInitDecl}];\n";
+                    }
                 }
                 else
                 {
@@ -851,6 +866,205 @@ public class PbToCSharpConverter : PowerBasicBaseVisitor<string>
             // Generate C# const declaration
             result += $"{Indent}{visibilityModifier}const {constType} {constName} = {value};\n";
         }
+
+        return result;
+    }
+
+    // Error handling statement visitors
+    public override string VisitOnErrorStmt(PowerBasicParser.OnErrorStmtContext context)
+    {
+        _hasErrorHandling = true;
+        string result = "";
+
+        // Check if it's ON ERROR GOTO label or ON ERROR RESUME NEXT
+        if (context.GOTO() != null)
+        {
+            // ON ERROR GOTO label
+            string? errorLabel = context.valueStmt()?.GetText();
+            _currentErrorHandler = errorLabel;
+
+            // In C#, we'll start a try block
+            result += $"{Indent}try\n";
+            result += $"{Indent}{{\n";
+            _indentLevel++;
+
+            // Add a comment to indicate where error handler should jump
+            result += $"{Indent}// Error handler will jump to {errorLabel} label\n";
+        }
+        else if (context.RESUME() != null && context.NEXT() != null)
+        {
+            // ON ERROR RESUME NEXT
+            // In C#, this means we'll wrap each statement in its own try-catch that ignores errors
+            result += $"{Indent}// ON ERROR RESUME NEXT - errors will be silently ignored\n";
+            _currentErrorHandler = "RESUME_NEXT";
+        }
+
+        return result;
+    }
+
+    public override string VisitErrorStmt(PowerBasicParser.ErrorStmtContext context)
+    {
+        // ERROR statement raises an error
+        string? errorCode = Visit(context.valueStmt());
+
+        // In C#, we throw an exception
+        return $"{Indent}throw new Exception($\"Error {{{errorCode}}}\");\n";
+    }
+
+    public override string VisitResumeStmt(PowerBasicParser.ResumeStmtContext context)
+    {
+        string result = "";
+
+        if (context.NEXT() != null)
+        {
+            // RESUME NEXT - continue after the error
+            result += $"{Indent}// RESUME NEXT - continue execution\n";
+        }
+        else if (context.ambiguousIdentifier() != null)
+        {
+            // RESUME label - jump to specific label
+            string? label = context.ambiguousIdentifier().GetText();
+            result += $"{Indent}// RESUME {label} - jump to label\n";
+            result += $"{Indent}goto {label};\n";
+        }
+        else
+        {
+            // RESUME - retry the statement that caused the error
+            result += $"{Indent}// RESUME - retry the statement\n";
+        }
+
+        return result;
+    }
+
+    // REDIM statement visitor
+    public override string VisitRedimStmt(PowerBasicParser.RedimStmtContext context)
+    {
+        string result = "";
+        bool preserve = context.PRESERVE() != null;
+
+        foreach (var redimSub in context.redimSubStmt())
+        {
+            // Get the array name
+            string? arrayName = redimSub.implicitCallStmt_InStmt()?.GetText();
+
+            // Get the type (if specified)
+            string arrayType = "object";
+            if (redimSub.asTypeClause() != null)
+            {
+                arrayType = ConvertType(redimSub.asTypeClause().GetText());
+            }
+            else if (arrayName != null && _variableTypes.ContainsKey(arrayName))
+            {
+                arrayType = _variableTypes[arrayName];
+            }
+
+            // Get the dimensions
+            var subscripts = redimSub.subscripts();
+            if (subscripts != null)
+            {
+                var dimensions = subscripts.subscript()
+                    .Select(s => s.valueStmt())
+                    .Where(valueStmts => valueStmts != null && valueStmts.Length > 0)
+                    .Select(valueStmts => Visit(valueStmts[^1]))
+                    .Select(dimension => dimension ?? "0").ToList();
+
+                if (preserve)
+                {
+                    // REDIM PRESERVE - resize array keeping existing data
+                    result += $"{Indent}// REDIM PRESERVE {arrayName}\n";
+                    result += $"{Indent}Array.Resize(ref {arrayName}, {dimensions[0]} + 1);\n";
+                }
+                else
+                {
+                    // REDIM - create new array (loses existing data)
+                    string arrayDecl = string.Join(", ", dimensions.Select(d => $"{d} + 1"));
+                    if (dimensions.Count == 1)
+                    {
+                        result += $"{Indent}{arrayName} = new {arrayType}[{arrayDecl}];\n";
+                    }
+                    else
+                    {
+                        // Multi-dimensional array
+                        string brackets = "[" + string.Join(",", dimensions.Select(d => $"{d} + 1")) + "]";
+                        result += $"{Indent}{arrayName} = new {arrayType}{brackets};\n";
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    // ENUM statement visitor
+    public override string VisitEnumerationStmt(PowerBasicParser.EnumerationStmtContext context)
+    {
+        var result = string.Empty;
+
+        // Check for visibility modifier (PUBLIC, PRIVATE)
+        var visibility = context.publicPrivateVisibility();
+        string visibilityModifier = "";
+        if (visibility != null)
+        {
+            string visText = visibility.GetText().ToUpper();
+            if (visText == "PUBLIC")
+                visibilityModifier = "public ";
+            else if (visText == "PRIVATE")
+                visibilityModifier = "private ";
+        }
+        else
+        {
+            visibilityModifier = "public "; // Default to public for enums
+        }
+
+        // Get enum name
+        string? enumName = context.ambiguousIdentifier()?.GetText();
+
+        // Generate C# enum declaration
+        result += $"{Indent}{visibilityModifier}enum {enumName}\n";
+        result += $"{Indent}{{\n";
+
+        _indentLevel++;
+
+        // Track the last value for auto-increment
+        int nextValue = 0;
+        bool hasExplicitValue = false;
+
+        // Process each enum constant
+        foreach (var constant in context.enumerationStmt_Constant())
+        {
+            string? constName = constant.ambiguousIdentifier()?.GetText();
+
+            if (constant.valueStmt() != null)
+            {
+                // Has explicit value
+                string? value = Visit(constant.valueStmt());
+                result += $"{Indent}{constName} = {value},\n";
+
+                // Try to parse the value for next auto-increment
+                if (int.TryParse(value, out int explicitValue))
+                {
+                    nextValue = explicitValue + 1;
+                    hasExplicitValue = true;
+                }
+            }
+            else
+            {
+                // Auto-increment from last value
+                if (hasExplicitValue)
+                {
+                    result += $"{Indent}{constName} = {nextValue},\n";
+                    nextValue++;
+                }
+                else
+                {
+                    // No explicit value needed for sequential enums in C#
+                    result += $"{Indent}{constName},\n";
+                }
+            }
+        }
+
+        _indentLevel--;
+        result += $"{Indent}}}\n";
 
         return result;
     }

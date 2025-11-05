@@ -37,6 +37,14 @@ Console.WriteLine("╔═══════════════════�
 Console.WriteLine("║     PowerBASIC to C# Converter - Comprehensive Test Suite         ║");
 Console.WriteLine("╚════════════════════════════════════════════════════════════════════╝");
 
+// 0. Test ENUM statements (NEW!)
+Console.WriteLine("\n\n📁 CATEGORY: ENUM DECLARATIONS");
+Console.WriteLine("─────────────────────────────────");
+RunTest("ENUM", "Simple ENUM", Runner.Examples.EnumExamples.SimpleEnum);
+RunTest("ENUM", "ENUM with Values", Runner.Examples.EnumExamples.EnumWithValues);
+RunTest("ENUM", "ENUM Mixed Values", Runner.Examples.EnumExamples.EnumMixedValues);
+RunTest("ENUM", "ENUM with Visibility", Runner.Examples.EnumExamples.EnumWithVisibility);
+
 // 1. Test EXIT statements (Control Flow)
 Console.WriteLine("\n\n📁 CATEGORY: EXIT STATEMENTS");
 Console.WriteLine("─────────────────────────────────");
